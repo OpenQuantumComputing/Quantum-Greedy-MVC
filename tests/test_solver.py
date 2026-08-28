@@ -74,3 +74,6 @@ def test_qeg_parameter_validation():
 
     with pytest.raises(ValueError, match="qeg_time"):
         QuantumGreedySolver(method="qeg_ldf", qeg_time=-0.1)
+
+    with pytest.raises(ValueError, match="qeg_time"):
+        QuantumGreedySolver(method="qeg_ldf", qeg_time=0.0)

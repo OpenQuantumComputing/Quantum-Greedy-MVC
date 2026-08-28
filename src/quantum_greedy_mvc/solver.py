@@ -37,8 +37,8 @@ class QuantumGreedySolver:
     def __post_init__(self) -> None:
         if self.shots is not None and self.shots <= 0:
             raise ValueError("shots must be a positive integer or None")
-        if self.qeg_time < 0:
-            raise ValueError("qeg_time must be >= 0")
+        if self.qeg_time <= 0:
+            raise ValueError("qeg_time must be > 0")
         if self.qeg_trotter_layers < 1:
             raise ValueError("qeg_trotter_layers must be >= 1")
 

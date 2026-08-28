@@ -146,9 +146,7 @@ def greedy_optimize(
 
 
 def quantum_greedy_vertex_cover(graph, weights: dict[Any, float], shots: int | None = None) -> set[Any]:
-    indexed_graph = nx.convert_node_labels_to_integers(graph)
-    index_to_node = {index: node for index, node in enumerate(graph.nodes())}
-    indexed_weights = {index: float(weights[index_to_node[index]]) for index in indexed_graph.nodes()}
+    indexed_graph, indexed_weights, _, index_to_node = _relabel_graph_and_weights(graph, weights)
 
     circuit, betas, graph_int = mixer_from_graph(indexed_graph, indexed_weights)
     beta_init = {i: 0.5 * math.pi / 2 for i in graph_int.nodes()}
@@ -260,8 +258,8 @@ def qeg_ldf_vertex_cover(
     trotter_layers: int = 1,
     shots: int | None = None,
 ):
-    if evolution_time < 0:
-        raise ValueError("evolution_time must be >= 0")
+    if evolution_time <= 0:
+        raise ValueError("evolution_time must be > 0")
     if trotter_layers < 1:
         raise ValueError("trotter_layers must be >= 1")
 
@@ -269,9 +267,13 @@ def qeg_ldf_vertex_cover(
     cover: set[Any] = set()
     diagnostics: list[dict[str, Any]] = []
 
+    working_weights = {node: float(weights[node]) for node in working_graph.nodes()}
+
     isolated = [node for node, degree in working_graph.degree() if degree == 0]
     if isolated:
         working_graph.remove_nodes_from(isolated)
+        for node in isolated:
+            working_weights.pop(node, None)
 
     step = 0
     while working_graph.number_of_edges() > 0:
@@ -279,10 +281,9 @@ def qeg_ldf_vertex_cover(
         if not candidate_nodes:
             break
 
-        step_weights = {node: float(weights[node]) for node in working_graph.nodes()}
         graph_int, weights_int, node_to_int, int_to_node = _relabel_graph_and_weights(
             working_graph,
-            step_weights,
+            working_weights,
         )
 
         candidate_energies: dict[Any, float] = {}
@@ -321,7 +322,7 @@ def qeg_ldf_vertex_cover(
                         "qubit": node_to_int[node],
                         "energy": float(candidate_energies[node]),
                         "degree": int(working_graph.degree(node)),
-                        "weight": float(step_weights[node]),
+                        "weight": float(working_weights[node]),
                     }
                     for node in _deterministic_node_order(candidate_nodes)
                 ],
@@ -335,10 +336,13 @@ def qeg_ldf_vertex_cover(
 
         cover.add(chosen)
         working_graph.remove_node(chosen)
+        working_weights.pop(chosen, None)
 
         isolated = [node for node, degree in working_graph.degree() if degree == 0]
         if isolated:
             working_graph.remove_nodes_from(isolated)
+            for node in isolated:
+                working_weights.pop(node, None)
 
         diagnostics[-1]["remaining_edges_after"] = int(working_graph.number_of_edges())
         step += 1
