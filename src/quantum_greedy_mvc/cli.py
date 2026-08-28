@@ -33,16 +33,23 @@ def main() -> None:
     parser.add_argument("--problem", choices=["mvc", "mis"], required=True)
     parser.add_argument(
         "--method",
-        choices=["quantum_greedy", "greedy_degree", "primal_dual", "exact", "lp_relaxation"],
+        choices=["quantum_greedy", "qeg_ldf", "greedy_degree", "primal_dual", "exact", "lp_relaxation"],
         default="greedy_degree",
     )
     parser.add_argument("--graph", required=True, help="Graph spec, e.g. cycle:8")
     parser.add_argument("--shots", type=int, default=None)
+    parser.add_argument("--qeg-time", type=float, default=0.35, help="QEG-LDF evolution time t")
+    parser.add_argument("--qeg-trotter-layers", type=int, default=1, help="QEG-LDF first-order Trotter layers p")
 
     args = parser.parse_args()
 
     graph = _parse_graph(args.graph)
-    solver = QuantumGreedySolver(method=args.method, shots=args.shots)
+    solver = QuantumGreedySolver(
+        method=args.method,
+        shots=args.shots,
+        qeg_time=args.qeg_time,
+        qeg_trotter_layers=args.qeg_trotter_layers,
+    )
     result = solver.solve(graph=graph, problem=args.problem)
 
     print(
