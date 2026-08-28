@@ -64,7 +64,7 @@ def expectation_value_cost_shifted(circuit, betas, weights: dict[Any, float], be
 
     for i, c_i in weights.items():
         p = ["I"] * n_qubits
-        p[i] = "Z"
+        p[n_qubits - 1 - i] = "Z"
         paulis.append("".join(p))
         coeffs.append(-0.5 * c_i)
 
@@ -127,5 +127,24 @@ def quantum_greedy_vertex_cover(graph, weights: dict[Any, float], shots: int | N
     beta_init = {i: 0.5 * math.pi / 2 for i in graph_int.nodes()}
     solved = greedy_optimize(circuit, betas, indexed_weights, beta_init, shots=shots)
 
-    cover: set[Any] = {index_to_node[i] for i, beta in solved.items() if abs(beta) < 1e-12}
+    # Map betas to a cover candidate.
+    # beta ~= 0 indicates selected (in cover), beta ~= pi/2 indicates not selected.
+    # For undecided values, default to selected to avoid silent infeasibility.
+    atol = 1e-9
+    cover_idx: set[int] = set()
+    for i, beta in solved.items():
+        if abs(beta) <= atol:
+            cover_idx.add(i)
+        elif abs(beta - (math.pi / 2)) <= atol:
+            continue
+        else:
+            cover_idx.add(i)
+
+    # Feasibility repair pass: ensure every edge is covered.
+    for u, v in graph_int.edges():
+        if u not in cover_idx and v not in cover_idx:
+            chosen = u if indexed_weights[u] <= indexed_weights[v] else v
+            cover_idx.add(chosen)
+
+    cover: set[Any] = {index_to_node[i] for i in cover_idx}
     return cover

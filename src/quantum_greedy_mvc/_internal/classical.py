@@ -11,8 +11,12 @@ def is_vertex_cover(graph, cover: set[Any]) -> bool:
 def greedy_degree_vertex_cover(graph, weights: dict[Any, float]) -> set[Any]:
     gc = graph.copy()
     cover: set[Any] = set()
+    unweighted = len({float(w) for w in weights.values()}) == 1
     while gc.number_of_edges() > 0:
-        node = max(gc.nodes(), key=lambda x: gc.degree(x) / max(weights[x], 1e-12))
+        if unweighted:
+            node = max(gc.nodes(), key=lambda x: gc.degree(x))
+        else:
+            node = max(gc.nodes(), key=lambda x: gc.degree(x) / max(weights[x], 1e-12))
         cover.add(node)
         gc.remove_node(node)
     return cover

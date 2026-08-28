@@ -71,7 +71,7 @@ qgmvc-solve --problem mis --graph path:10 --method primal_dual
 ## Migration notes
 
 Older workflow:
-- Run scripts in `/home/runner/work/Quantum-Greedy-MVC/Quantum-Greedy-MVC/MVC/QGMVC.py` and `/home/runner/work/Quantum-Greedy-MVC/Quantum-Greedy-MVC/MVC/QGMVC_parallel.py`
+- Run scripts in `MVC/QGMVC.py` and `MVC/QGMVC_parallel.py`
 - Notebook/SLURM driven experiments
 
 New workflow:

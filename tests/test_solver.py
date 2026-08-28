@@ -1,4 +1,5 @@
 import networkx as nx
+import pytest
 
 from quantum_greedy_mvc import QuantumGreedySolver
 
@@ -27,7 +28,7 @@ def test_mis_unweighted_is_independent_set():
 
 
 
-def test_weighted_mis_matches_vertex_cover_complement_identity_with_exact_if_available():
+def test_weighted_mvc_and_mis_objectives_sum_to_total_weight():
     graph = nx.cycle_graph(4)
     weights = {0: 2.0, 1: 1.0, 2: 2.0, 3: 1.0}
 
@@ -45,8 +46,5 @@ def test_invalid_weights_raise():
     solver = QuantumGreedySolver(method="greedy_degree")
 
     bad_weights = {0: 1.0, 1: 2.0}
-    try:
+    with pytest.raises(ValueError, match="weights keys must match graph nodes"):
         solver.solve_mvc(graph, weights=bad_weights)
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "weights keys must match graph nodes" in str(exc)
