@@ -4,7 +4,7 @@ An installable Python package for solving:
 - **MVC**: weighted/unweighted Minimum Vertex Cover
 - **MIS**: weighted/unweighted Maximum Independent Set
 
-This repository also includes research scripts and Lean formalization artifacts. The runtime package is exposed through `quantum_greedy_mvc`.
+This repository includes the installable runtime package (`quantum_greedy_mvc`) and Lean formalization artifacts in `lean/`.
 
 ## What it solves
 
@@ -91,13 +91,11 @@ qgmvc-solve --problem mis --graph path:10 --method primal_dual
 
 ## Migration notes
 
-Older workflow:
-- Run scripts in `MVC/QGMVC.py` and `MVC/QGMVC_parallel.py`
-- Notebook/SLURM driven experiments
+This repository now focuses on the installable package API.
 
-New workflow:
+Current workflow:
 - `pip install .`
 - Import `QuantumGreedySolver`
 - Call `solve_mvc(...)` / `solve_mis(...)` directly from Python
 
-The legacy experiment scripts are preserved for research reproduction, while the package API is intended for end users.
+Legacy experiment scripts/notebooks were removed from the repository to keep the layout lean and package-focused.
