@@ -77,3 +77,9 @@ def test_qeg_parameter_validation():
 
     with pytest.raises(ValueError, match="qeg_time"):
         QuantumGreedySolver(method="qeg_ldf", qeg_time=0.0)
+
+
+def test_non_qeg_methods_ignore_qeg_parameters():
+    solver = QuantumGreedySolver(method="greedy_degree", qeg_time=-1.0, qeg_trotter_layers=0)
+    result = solver.solve_mvc(nx.path_graph(4))
+    assert result.feasible is True

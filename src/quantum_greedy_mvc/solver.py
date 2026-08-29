@@ -13,7 +13,7 @@ from ._internal.classical import (
     mvc_primal_dual_weighted,
 )
 from ._internal.quantum import qeg_ldf_vertex_cover, quantum_greedy_vertex_cover
-from .types import SolveResult
+from .types import QegLdfMetadata, SolveResult
 
 
 ProblemName = Literal["mvc", "mis"]
@@ -37,10 +37,12 @@ class QuantumGreedySolver:
     def __post_init__(self) -> None:
         if self.shots is not None and self.shots <= 0:
             raise ValueError("shots must be a positive integer or None")
-        if self.qeg_time <= 0:
-            raise ValueError("qeg_time must be > 0")
-        if self.qeg_trotter_layers < 1:
-            raise ValueError("qeg_trotter_layers must be >= 1")
+
+        if self.method == "qeg_ldf":
+            if self.qeg_time <= 0:
+                raise ValueError("qeg_time must be > 0")
+            if self.qeg_trotter_layers < 1:
+                raise ValueError("qeg_trotter_layers must be >= 1")
 
     def solve(
         self,
@@ -59,22 +61,13 @@ class QuantumGreedySolver:
         normalized_weights = self._normalize_weights(validated_graph, weights)
 
         cover, method_metadata = self._solve_vertex_cover(validated_graph, normalized_weights)
-        feasible = is_vertex_cover(validated_graph, cover)
-        objective = float(sum(normalized_weights[node] for node in cover))
-
-        metadata = {
-            "n_nodes": validated_graph.number_of_nodes(),
-            "n_edges": validated_graph.number_of_edges(),
-            **method_metadata,
-        }
-
         return SolveResult(
             problem="mvc",
             method=self.method,
             solution=set(cover),
-            objective=objective,
-            feasible=feasible,
-            metadata=metadata,
+            objective=float(sum(normalized_weights[node] for node in cover)),
+            feasible=is_vertex_cover(validated_graph, cover),
+            metadata=self._base_metadata(validated_graph, method_metadata),
         )
 
     def solve_mis(self, graph: nx.Graph, weights: dict[Any, float] | None = None) -> SolveResult:
@@ -84,22 +77,15 @@ class QuantumGreedySolver:
         cover, method_metadata = self._solve_vertex_cover(validated_graph, normalized_weights)
         independent_set = set(validated_graph.nodes()) - set(cover)
 
-        feasible = self._is_independent_set(validated_graph, independent_set)
-        objective = float(sum(normalized_weights[node] for node in independent_set))
-
-        metadata = {
-            "n_nodes": validated_graph.number_of_nodes(),
-            "n_edges": validated_graph.number_of_edges(),
-            "via": "complement_of_vertex_cover",
-            **method_metadata,
-        }
+        metadata = self._base_metadata(validated_graph, method_metadata)
+        metadata["via"] = "complement_of_vertex_cover"
 
         return SolveResult(
             problem="mis",
             method=self.method,
             solution=independent_set,
-            objective=objective,
-            feasible=feasible,
+            objective=float(sum(normalized_weights[node] for node in independent_set)),
+            feasible=self._is_independent_set(validated_graph, independent_set),
             metadata=metadata,
         )
 
@@ -110,22 +96,23 @@ class QuantumGreedySolver:
     ) -> tuple[set[Any], dict[str, Any]]:
         if self.method == "quantum_greedy":
             return quantum_greedy_vertex_cover(graph, weights, shots=self.shots), {}
+
         if self.method == "qeg_ldf":
             cover, diagnostics = qeg_ldf_vertex_cover(
-                graph,
-                weights,
+                graph=graph,
+                weights=weights,
                 evolution_time=self.qeg_time,
                 trotter_layers=self.qeg_trotter_layers,
                 shots=self.shots,
             )
-            return cover, {
-                "qeg_ldf": {
-                    "time": float(self.qeg_time),
-                    "trotter_layers": int(self.qeg_trotter_layers),
-                    "shots": self.shots,
-                    "steps": diagnostics,
-                }
+            qeg_metadata: QegLdfMetadata = {
+                "time": float(self.qeg_time),
+                "trotter_layers": int(self.qeg_trotter_layers),
+                "shots": self.shots,
+                "steps": diagnostics,
             }
+            return cover, {"qeg_ldf": qeg_metadata}
+
         if self.method == "greedy_degree":
             return greedy_degree_vertex_cover(graph, weights), {}
         if self.method == "primal_dual":
@@ -134,7 +121,16 @@ class QuantumGreedySolver:
             return mvc_exact_cplex(graph, weights), {}
         if self.method == "lp_relaxation":
             return mvc_lp_relaxation(graph, weights), {}
+
         raise ValueError(f"Unsupported method '{self.method}'.")
+
+    @staticmethod
+    def _base_metadata(graph: nx.Graph, extra: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "n_nodes": graph.number_of_nodes(),
+            "n_edges": graph.number_of_edges(),
+            **extra,
+        }
 
     @staticmethod
     def _validate_graph(graph: nx.Graph) -> nx.Graph:

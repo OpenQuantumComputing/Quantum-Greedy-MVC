@@ -4,6 +4,11 @@ from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
 
+class QegLdfNodeMapping(TypedDict):
+    node: Any
+    qubit: int
+
+
 class QegLdfCandidateDiagnostic(TypedDict):
     node: Any
     qubit: int
@@ -17,9 +22,16 @@ class QegLdfStepDiagnostic(TypedDict):
     chosen: Any
     chosen_energy: float
     candidates: list[QegLdfCandidateDiagnostic]
-    mapping: list[dict[str, Any]]
+    mapping: list[QegLdfNodeMapping]
     remaining_edges_before: int
     remaining_edges_after: int
+
+
+class QegLdfMetadata(TypedDict):
+    time: float
+    trotter_layers: int
+    shots: int | None
+    steps: list[QegLdfStepDiagnostic]
 
 
 @dataclass(frozen=True)
