@@ -36,7 +36,7 @@ print(mis.solution, mis.objective)
 
 ## Notebook example
 
-- `/home/runner/work/Quantum-Greedy-MVC/Quantum-Greedy-MVC/examples/basic_usage.ipynb`
+- `examples/basic_usage.ipynb`
 
 ## Methods
 

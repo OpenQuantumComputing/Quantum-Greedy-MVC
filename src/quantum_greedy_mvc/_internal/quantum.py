@@ -130,8 +130,8 @@ def _greedy_optimize_angles(circuit, betas, weights, beta_values, shots: int | N
 
 def _is_selected_for_cover(beta: float, atol: float = 1e-9) -> bool:
     # Preserve established behavior:
-    # near 0 -> selected; near pi/2 -> not selected; undecided -> selected fallback.
-    return abs(beta) <= atol or abs(beta - (math.pi / 2)) > atol
+    # near pi/2 -> not selected; everything else -> selected fallback.
+    return not (abs(beta - (math.pi / 2)) <= atol)
 
 
 def quantum_greedy_vertex_cover(
