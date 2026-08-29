@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantum-greedy-mvc"
+version = "0.1.0"
+description = "Quantum-greedy solvers for Minimum Vertex Cover (MVC) and Maximum Independent Set (MIS)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "OpenQuantumComputing" }
+]
+license = { text = "Proprietary" }
+dependencies = [
+  "networkx>=3.0",
+  "numpy>=1.24"
+]
+
+[project.optional-dependencies]
+quantum = [
+  "qiskit>=1.0",
+  "qiskit-aer>=0.14"
+]
+cplex = [
+  "docplex>=2.25"
+]
+all = [
+  "qiskit>=1.0",
+  "qiskit-aer>=0.14",
+  "docplex>=2.25"
+]
+dev = [
+  "pytest>=8.0"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
