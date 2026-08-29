@@ -7,12 +7,6 @@ from typing import Any
 import networkx as nx
 import numpy as np
 
-from quantum_greedy_mvc.types import (
-    QegLdfCandidateDiagnostic,
-    QegLdfNodeMapping,
-    QegLdfStepDiagnostic,
-)
-
 
 def _require_qiskit():
     try:
@@ -32,10 +26,6 @@ def _deterministic_node_order(nodes) -> list[Any]:
     return sorted(nodes, key=lambda node: (str(type(node)), repr(node)))
 
 
-def _node_order_by_cost_degree(graph: nx.Graph, weights: dict[Any, float]) -> list[Any]:
-    return sorted(graph.nodes(), key=lambda node: (-weights[node], graph.degree(node)))
-
-
 def _relabel_graph_and_weights(
     graph: nx.Graph,
     weights: dict[Any, float],
@@ -46,38 +36,7 @@ def _relabel_graph_and_weights(
 
     graph_int = nx.relabel_nodes(graph, node_to_int, copy=True)
     weights_int = {node_to_int[node]: float(weights[node]) for node in ordered_nodes}
-
     return graph_int, weights_int, node_to_int, int_to_node
-
-
-def _mixer_from_graph(
-    graph: nx.Graph,
-    weights: dict[Any, float],
-    node_order: list[Any] | None = None,
-):
-    QuantumCircuit, _, Parameter, RXGate, _, _, _ = _require_qiskit()
-
-    indexed_graph = nx.convert_node_labels_to_integers(graph)
-    n_qubits = indexed_graph.number_of_nodes()
-
-    circuit = QuantumCircuit(n_qubits)
-    betas = {node: Parameter(f"β_{node}") for node in indexed_graph.nodes()}
-
-    for qubit in range(n_qubits):
-        circuit.x(qubit)
-
-    if node_order is None:
-        node_order = _node_order_by_cost_degree(indexed_graph, weights)
-
-    for target in node_order:
-        angle = 2 * betas[target]
-        controls = list(indexed_graph.neighbors(target))
-        if controls:
-            circuit.append(RXGate(angle).control(len(controls)), controls + [target])
-        else:
-            circuit.rx(angle, target)
-
-    return circuit, betas, indexed_graph
 
 
 def _build_cost_hamiltonian(weights: dict[int, float], n_qubits: int):
@@ -85,25 +44,19 @@ def _build_cost_hamiltonian(weights: dict[int, float], n_qubits: int):
 
     paulis = []
     coeffs = []
-
     for qubit, weight in weights.items():
-        pauli_chars = ["I"] * n_qubits
-        pauli_chars[n_qubits - 1 - qubit] = "Z"
-        paulis.append("".join(pauli_chars))
+        pauli = ["I"] * n_qubits
+        pauli[n_qubits - 1 - qubit] = "Z"
+        paulis.append("".join(pauli))
         coeffs.append(-0.5 * weight)
 
     return SparsePauliOp(paulis, coeffs), 0.5 * sum(weights.values())
 
 
-def _expected_cost_from_circuit(
-    circuit,
-    weights: dict[int, float],
-    shots: int | None,
-) -> float:
+def _expected_cost_from_circuit(circuit, weights: dict[int, float], shots: int | None) -> float:
     _, transpile, _, _, _, Statevector, Aer = _require_qiskit()
 
-    n_qubits = circuit.num_qubits
-    hamiltonian, shift = _build_cost_hamiltonian(weights, n_qubits)
+    hamiltonian, shift = _build_cost_hamiltonian(weights, circuit.num_qubits)
 
     if shots is None:
         state = Statevector.from_instruction(circuit)
@@ -111,45 +64,54 @@ def _expected_cost_from_circuit(
 
     measured = circuit.copy()
     measured.measure_all()
-
     backend = Aer.get_backend("aer_simulator")
     measured = transpile(measured, backend)
     counts = backend.run(measured, shots=shots).result().get_counts()
 
     expectation = 0.0
     for bitstring, count in counts.items():
-        probability = count / shots
-        z_values = np.array([1 if bit == "0" else -1 for bit in bitstring[::-1]])
-        h_value = sum(-0.5 * weights[i] * z_values[i] for i in weights)
-        expectation += probability * h_value
+        prob = count / shots
+        z_vals = np.array([1 if bit == "0" else -1 for bit in bitstring[::-1]])
+        hz = sum(-0.5 * weights[i] * z_vals[i] for i in weights)
+        expectation += prob * hz
 
     return float(shift + expectation)
 
 
-def expectation_value_cost_shifted(
-    circuit,
-    betas,
-    weights: dict[Any, float],
-    beta_values: dict[Any, float],
-    shots: int | None = None,
-):
+def _mixer_from_graph(graph: nx.Graph, weights: dict[int, float]):
+    QuantumCircuit, _, Parameter, RXGate, _, _, _ = _require_qiskit()
+
+    n_qubits = graph.number_of_nodes()
+    circuit = QuantumCircuit(n_qubits)
+    betas = {node: Parameter(f"β_{node}") for node in graph.nodes()}
+
+    for qubit in range(n_qubits):
+        circuit.x(qubit)
+
+    node_order = sorted(graph.nodes(), key=lambda node: (-weights[node], graph.degree(node)))
+    for target in node_order:
+        angle = 2 * betas[target]
+        controls = list(graph.neighbors(target))
+        if controls:
+            circuit.append(RXGate(angle).control(len(controls)), controls + [target])
+        else:
+            circuit.rx(angle, target)
+
+    return circuit, betas
+
+
+def expectation_value_cost_shifted(circuit, betas, weights, beta_values, shots: int | None = None):
     bound = circuit.assign_parameters({betas[i]: beta_values[i] for i in betas})
     return _expected_cost_from_circuit(bound, weights, shots)
 
 
-def _greedy_optimize_angles(
-    circuit,
-    betas,
-    weights: dict[int, float],
-    beta_values: dict[int, float],
-    shots: int | None,
-) -> dict[int, float]:
+def _greedy_optimize_angles(circuit, betas, weights, beta_values, shots: int | None = None):
     values = beta_values.copy()
     free = list(betas.keys())
 
     while free:
         idx = random.choice(free)
-        best_value = values[idx]
+        best_val = values[idx]
         best_energy = expectation_value_cost_shifted(circuit, betas, weights, values, shots)
 
         for candidate in (0.0, math.pi / 2):
@@ -158,24 +120,19 @@ def _greedy_optimize_angles(
             energy = expectation_value_cost_shifted(circuit, betas, weights, trial, shots)
             if energy < best_energy:
                 best_energy = energy
-                best_value = candidate
+                best_val = candidate
 
-        values[idx] = best_value
+        values[idx] = best_val
         free.remove(idx)
 
     return values
 
 
-
-
 def _is_selected_for_cover(beta: float, atol: float = 1e-9) -> bool:
-    """Preserve prior selection semantics used by quantum_greedy decoding.
-
-    - near 0: selected
-    - near pi/2: not selected
-    - otherwise (undecided): selected (safe fallback)
-    """
+    # Preserve established behavior:
+    # near 0 -> selected; near pi/2 -> not selected; undecided -> selected fallback.
     return abs(beta) <= atol or abs(beta - (math.pi / 2)) > atol
+
 
 def quantum_greedy_vertex_cover(
     graph: nx.Graph,
@@ -183,19 +140,12 @@ def quantum_greedy_vertex_cover(
     shots: int | None = None,
 ) -> set[Any]:
     graph_int, weights_int, _, int_to_node = _relabel_graph_and_weights(graph, weights)
-
-    circuit, betas, graph_int = _mixer_from_graph(graph_int, weights_int)
+    circuit, betas = _mixer_from_graph(graph_int, weights_int)
     beta_init = {i: 0.5 * math.pi / 2 for i in graph_int.nodes()}
     solved = _greedy_optimize_angles(circuit, betas, weights_int, beta_init, shots)
 
-    atol = 1e-9
-    cover_int: set[int] = {
-        i
-        for i, beta in solved.items()
-        if _is_selected_for_cover(beta, atol=atol)
-    }
+    cover_int = {i for i, beta in solved.items() if _is_selected_for_cover(beta)}
 
-    # Preserve prior repair behavior for feasibility.
     for u, v in graph_int.edges():
         if u not in cover_int and v not in cover_int:
             cover_int.add(u if weights_int[u] <= weights_int[v] else v)
@@ -214,20 +164,16 @@ def _conditioned_mvc_mixer_circuit(
     if trotter_layers < 1:
         raise ValueError("trotter_layers must be >= 1")
 
-    n_qubits = graph_int.number_of_nodes()
-    circuit = QuantumCircuit(n_qubits)
-
-    # All-ones feasible MVC state.
-    for qubit in range(n_qubits):
+    circuit = QuantumCircuit(graph_int.number_of_nodes())
+    for qubit in range(graph_int.number_of_nodes()):
         circuit.x(qubit)
 
     delta_t = evolution_time / trotter_layers
-    # Sign convention:
-    # RX(theta) = exp(-i theta X / 2), so exp(+i delta_t X) => RX(-2 * delta_t).
+    # RX(theta) = exp(-i theta X / 2), so exp(+i delta_t X) => RX(-2*delta_t)
     theta = -2.0 * delta_t
 
     for _ in range(trotter_layers):
-        for qubit in range(n_qubits):
+        for qubit in range(graph_int.number_of_nodes()):
             if qubit == fixed_vertex:
                 continue
             controls = sorted(graph_int.neighbors(qubit))
@@ -239,11 +185,7 @@ def _conditioned_mvc_mixer_circuit(
     return circuit
 
 
-def _remove_isolated_nodes_inplace(
-    graph: nx.Graph,
-    weights: dict[Any, float],
-) -> None:
-    """Remove isolated vertices from graph and corresponding weights in-place."""
+def _remove_isolated_nodes_inplace(graph: nx.Graph, weights: dict[Any, float]) -> None:
     isolated = [node for node, degree in graph.degree() if degree == 0]
     if isolated:
         graph.remove_nodes_from(isolated)
@@ -257,7 +199,7 @@ def qeg_ldf_vertex_cover(
     evolution_time: float = 0.35,
     trotter_layers: int = 1,
     shots: int | None = None,
-) -> tuple[set[Any], list[QegLdfStepDiagnostic]]:
+) -> tuple[set[Any], list[dict[str, Any]]]:
     if evolution_time <= 0:
         raise ValueError("evolution_time must be > 0")
     if trotter_layers < 1:
@@ -265,9 +207,8 @@ def qeg_ldf_vertex_cover(
 
     working_graph = graph.copy()
     working_weights = {node: float(weights[node]) for node in working_graph.nodes()}
-
     cover: set[Any] = set()
-    diagnostics: list[QegLdfStepDiagnostic] = []
+    diagnostics: list[dict[str, Any]] = []
 
     _remove_isolated_nodes_inplace(working_graph, working_weights)
 
@@ -282,7 +223,7 @@ def qeg_ldf_vertex_cover(
             working_weights,
         )
 
-        candidate_energies: dict[Any, float] = {}
+        energies: dict[Any, float] = {}
         for node in candidates:
             circuit = _conditioned_mvc_mixer_circuit(
                 graph_int=graph_int,
@@ -290,56 +231,39 @@ def qeg_ldf_vertex_cover(
                 evolution_time=evolution_time,
                 trotter_layers=trotter_layers,
             )
-            candidate_energies[node] = _expected_cost_from_circuit(
-                circuit,
-                weights_int,
-                shots=shots,
-            )
+            energies[node] = _expected_cost_from_circuit(circuit, weights_int, shots)
 
         chosen = min(
             candidates,
-            key=lambda node: (
-                candidate_energies[node],
-                -working_graph.degree(node),
-                str(type(node)),
-                repr(node),
-            ),
+            key=lambda node: (energies[node], -working_graph.degree(node), str(type(node)), repr(node)),
         )
 
-        candidate_details: list[QegLdfCandidateDiagnostic] = [
-            {
-                "node": node,
-                "qubit": node_to_int[node],
-                "energy": float(candidate_energies[node]),
-                "degree": int(working_graph.degree(node)),
-                "weight": float(working_weights[node]),
-            }
-            for node in _deterministic_node_order(candidates)
-        ]
-        mapping: list[QegLdfNodeMapping] = [
-            {"node": int_to_node[q], "qubit": q}
-            for q in sorted(int_to_node)
-        ]
-
-        remaining_edges_before = int(working_graph.number_of_edges())
-
+        remaining_before = working_graph.number_of_edges()
         cover.add(chosen)
         working_graph.remove_node(chosen)
         working_weights.pop(chosen, None)
-
         _remove_isolated_nodes_inplace(working_graph, working_weights)
-        remaining_edges_after = int(working_graph.number_of_edges())
 
-        step_diagnostic: QegLdfStepDiagnostic = {
-            "step": step,
-            "chosen": chosen,
-            "chosen_energy": float(candidate_energies[chosen]),
-            "candidates": candidate_details,
-            "mapping": mapping,
-            "remaining_edges_before": remaining_edges_before,
-            "remaining_edges_after": remaining_edges_after,
-        }
-        diagnostics.append(step_diagnostic)
+        diagnostics.append(
+            {
+                "step": step,
+                "chosen": chosen,
+                "chosen_energy": float(energies[chosen]),
+                "remaining_edges_before": int(remaining_before),
+                "remaining_edges_after": int(working_graph.number_of_edges()),
+                "mapping": [{"node": int_to_node[q], "qubit": q} for q in sorted(int_to_node)],
+                "candidates": [
+                    {
+                        "node": node,
+                        "qubit": node_to_int[node],
+                        "energy": float(energies[node]),
+                        "degree": int(working_graph.degree(node)) if node in working_graph else 0,
+                        "weight": float(weights_int[node_to_int[node]]),
+                    }
+                    for node in _deterministic_node_order(candidates)
+                ],
+            }
+        )
         step += 1
 
     return cover, diagnostics
