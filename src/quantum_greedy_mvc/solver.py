@@ -14,6 +14,7 @@ from ._internal.classical import (
 )
 from ._internal.quantum import (
     _conditioned_mvc_mixer_circuit,
+    _deterministic_node_order,
     _expected_cost_from_circuit,
     _relabel_graph_and_weights,
     _remove_isolated_nodes_inplace,
@@ -192,10 +193,10 @@ def _qeg_ldf_first_step_vertex_cover(
     if working_graph.number_of_edges() == 0:
         return None, None
 
-    candidates = [node for node, degree in working_graph.degree() if degree > 0]
-    if not candidates:
-        # Defensive fallback for inconsistent graph state.
-        return None, None
+    candidates = list(working_graph.nodes())
+    deterministic_rank = {
+        node: rank for rank, node in enumerate(_deterministic_node_order(candidates))
+    }
 
     graph_int, weights_int, node_to_int, _ = _relabel_graph_and_weights(
         working_graph,
@@ -214,8 +215,7 @@ def _qeg_ldf_first_step_vertex_cover(
             trotter_layers=trotter_layers,
         )
         energy = _expected_cost_from_circuit(circuit, weights_int, shots)
-        # Deterministic tiebreaker across mixed node types.
-        key = (energy, -working_graph.degree(node), str(type(node)), repr(node))
+        key = (energy, -working_graph.degree(node), deterministic_rank[node])
         if best_key is None or key < best_key:
             best_node = node
             best_circuit = circuit
