@@ -1,7 +1,7 @@
 import networkx as nx
 import pytest
 
-from quantum_greedy_mvc import QuantumGreedySolver
+from quantum_greedy_mvc import QuantumGreedySolver, first_step_mis, first_step_mvc
 
 
 def test_mvc_unweighted_greedy_degree_returns_vertex_cover():
@@ -83,3 +83,49 @@ def test_non_qeg_methods_ignore_qeg_parameters():
     solver = QuantumGreedySolver(method="greedy_degree", qeg_time=-1.0, qeg_trotter_layers=0)
     result = solver.solve_mvc(nx.path_graph(4))
     assert result.feasible is True
+
+
+def test_first_step_mvc_returns_selected_vertex_and_circuit(monkeypatch):
+    graph = nx.path_graph(3)
+    weights = {0: 1.0, 1: 1.0, 2: 1.0}
+
+    def fake_circuit(graph_int, fixed_vertex, evolution_time, trotter_layers):
+        assert evolution_time == 0.35
+        assert trotter_layers == 1
+        return f"circ-{fixed_vertex}"
+
+    def fake_energy(circuit, weights_int, shots):
+        energies = {"circ-0": 2.0, "circ-1": 1.0, "circ-2": 3.0}
+        return energies[circuit]
+
+    monkeypatch.setattr("quantum_greedy_mvc.solver._conditioned_mvc_mixer_circuit", fake_circuit)
+    monkeypatch.setattr("quantum_greedy_mvc.solver._expected_cost_from_circuit", fake_energy)
+
+    selected_vertex, circuit = first_step_mvc(graph, weights=weights)
+    assert selected_vertex == 1
+    assert circuit == "circ-1"
+
+
+def test_first_step_mis_uses_same_first_decision_as_recursive_cover(monkeypatch):
+    graph = nx.path_graph(3)
+
+    def fake_circuit(graph_int, fixed_vertex, evolution_time, trotter_layers):
+        return f"circ-{fixed_vertex}"
+
+    def fake_energy(circuit, weights_int, shots):
+        energies = {"circ-0": 1.0, "circ-1": 5.0, "circ-2": 2.0}
+        return energies[circuit]
+
+    monkeypatch.setattr("quantum_greedy_mvc.solver._conditioned_mvc_mixer_circuit", fake_circuit)
+    monkeypatch.setattr("quantum_greedy_mvc.solver._expected_cost_from_circuit", fake_energy)
+
+    selected_vertex, circuit = first_step_mis(graph)
+    assert selected_vertex == 0
+    assert circuit == "circ-0"
+
+
+def test_first_step_returns_none_for_edge_free_graph():
+    graph = nx.empty_graph(4)
+    selected_vertex, circuit = first_step_mvc(graph)
+    assert selected_vertex is None
+    assert circuit is None

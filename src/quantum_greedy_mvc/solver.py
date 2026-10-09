@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import networkx as nx
 
@@ -12,8 +12,18 @@ from ._internal.classical import (
     mvc_lp_relaxation,
     mvc_primal_dual_weighted,
 )
-from ._internal.quantum import qeg_ldf_vertex_cover, quantum_greedy_vertex_cover
+from ._internal.quantum import (
+    _conditioned_mvc_mixer_circuit,
+    _expected_cost_from_circuit,
+    _relabel_graph_and_weights,
+    _remove_isolated_nodes_inplace,
+    qeg_ldf_vertex_cover,
+    quantum_greedy_vertex_cover,
+)
 from .types import SolveResult
+
+if TYPE_CHECKING:
+    from qiskit import QuantumCircuit
 
 ProblemName = Literal["mvc", "mis"]
 MethodName = Literal[
@@ -161,3 +171,75 @@ class QuantumGreedySolver:
             if u in nodes and v in nodes:
                 return False
         return True
+
+
+def _qeg_ldf_first_step_vertex_cover(
+    graph: nx.Graph,
+    weights: dict[Any, float],
+    evolution_time: float = 0.35,
+    trotter_layers: int = 1,
+    shots: int | None = None,
+) -> tuple[Any | None, QuantumCircuit | None]:
+    if evolution_time <= 0:
+        raise ValueError("evolution_time must be > 0")
+    if trotter_layers < 1:
+        raise ValueError("trotter_layers must be >= 1")
+
+    working_graph = graph.copy()
+    working_weights = {node: float(weights[node]) for node in working_graph.nodes()}
+    _remove_isolated_nodes_inplace(working_graph, working_weights)
+
+    if working_graph.number_of_edges() == 0:
+        return None, None
+
+    candidates = list(working_graph.nodes())
+    ordered_candidates = sorted(candidates, key=lambda node: (str(type(node)), repr(node)))
+    deterministic_rank = {
+        node: rank for rank, node in enumerate(ordered_candidates)
+    }
+
+    graph_int, weights_int, node_to_int, _ = _relabel_graph_and_weights(
+        working_graph,
+        working_weights,
+    )
+
+    best_node: Any | None = None
+    best_circuit: QuantumCircuit | None = None
+    best_key: tuple[float, int, int] | None = None
+
+    for node in ordered_candidates:
+        circuit = _conditioned_mvc_mixer_circuit(
+            graph_int=graph_int,
+            fixed_vertex=node_to_int[node],
+            evolution_time=evolution_time,
+            trotter_layers=trotter_layers,
+        )
+        energy = _expected_cost_from_circuit(circuit, weights_int, shots)
+        # Selection rule: lowest energy, then highest degree, then deterministic node order.
+        key = (energy, -working_graph.degree(node), deterministic_rank[node])
+        if best_key is None or key < best_key:
+            best_node = node
+            best_circuit = circuit
+            best_key = key
+
+    return best_node, best_circuit
+
+
+def first_step_mvc(
+    graph: nx.Graph,
+    weights: dict[Any, float] | None = None,
+) -> tuple[Any | None, QuantumCircuit | None]:
+    """Return the first QEG-LDF MVC decision as (selected_vertex, conditioned_circuit)."""
+    validated_graph = QuantumGreedySolver._validate_graph(graph)
+    normalized_weights = QuantumGreedySolver._normalize_weights(validated_graph, weights)
+    return _qeg_ldf_first_step_vertex_cover(validated_graph, normalized_weights)
+
+
+def first_step_mis(
+    graph: nx.Graph,
+    weights: dict[Any, float] | None = None,
+) -> tuple[Any | None, QuantumCircuit | None]:
+    """Return the first cover vertex decision used by solve_mis() complement logic."""
+    # solve_mis() is implemented as complement_of_vertex_cover, so this first decision
+    # intentionally mirrors the first recursive cover decision.
+    return first_step_mvc(graph, weights)
