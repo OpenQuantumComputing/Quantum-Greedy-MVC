@@ -202,8 +202,10 @@ def _qeg_ldf_first_step_vertex_cover(
         working_weights,
     )
 
-    energies: dict[Any, float] = {}
-    circuits: dict[Any, QuantumCircuit] = {}
+    best_node: Any | None = None
+    best_circuit: QuantumCircuit | None = None
+    best_key: tuple[float, int, str, str] | None = None
+
     for node in candidates:
         circuit = _conditioned_mvc_mixer_circuit(
             graph_int=graph_int,
@@ -211,15 +213,15 @@ def _qeg_ldf_first_step_vertex_cover(
             evolution_time=evolution_time,
             trotter_layers=trotter_layers,
         )
-        circuits[node] = circuit
-        energies[node] = _expected_cost_from_circuit(circuit, weights_int, shots)
-
-    chosen = min(
-        candidates,
+        energy = _expected_cost_from_circuit(circuit, weights_int, shots)
         # Deterministic tiebreaker across mixed node types.
-        key=lambda node: (energies[node], -working_graph.degree(node), str(type(node)), repr(node)),
-    )
-    return chosen, circuits[chosen]
+        key = (energy, -working_graph.degree(node), str(type(node)), repr(node))
+        if best_key is None or key < best_key:
+            best_node = node
+            best_circuit = circuit
+            best_key = key
+
+    return best_node, best_circuit
 
 
 def first_step_mvc(
