@@ -14,7 +14,6 @@ from ._internal.classical import (
 )
 from ._internal.quantum import (
     _conditioned_mvc_mixer_circuit,
-    _deterministic_node_order,
     _expected_cost_from_circuit,
     _relabel_graph_and_weights,
     _remove_isolated_nodes_inplace,
@@ -194,8 +193,9 @@ def _qeg_ldf_first_step_vertex_cover(
         return None, None
 
     candidates = list(working_graph.nodes())
+    ordered_candidates = sorted(candidates, key=lambda node: (str(type(node)), repr(node)))
     deterministic_rank = {
-        node: rank for rank, node in enumerate(_deterministic_node_order(candidates))
+        node: rank for rank, node in enumerate(ordered_candidates)
     }
 
     graph_int, weights_int, node_to_int, _ = _relabel_graph_and_weights(
@@ -239,7 +239,7 @@ def first_step_mis(
     graph: nx.Graph,
     weights: dict[Any, float] | None = None,
 ) -> tuple[Any | None, QuantumCircuit | None]:
-    """Return the first recursive cover decision used by solve_mis() complement logic."""
+    """Return the first cover vertex decision used by solve_mis() complement logic."""
     # solve_mis() is implemented as complement_of_vertex_cover, so this first decision
     # intentionally mirrors the first recursive cover decision.
     return first_step_mvc(graph, weights)
