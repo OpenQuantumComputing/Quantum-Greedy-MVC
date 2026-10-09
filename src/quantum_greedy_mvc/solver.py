@@ -193,6 +193,9 @@ def _qeg_ldf_first_step_vertex_cover(
         return None, None
 
     candidates = [node for node, degree in working_graph.degree() if degree > 0]
+    if not candidates:
+        # Defensive fallback for inconsistent graph state.
+        return None, None
 
     graph_int, weights_int, node_to_int, _ = _relabel_graph_and_weights(
         working_graph,
@@ -213,6 +216,7 @@ def _qeg_ldf_first_step_vertex_cover(
 
     chosen = min(
         candidates,
+        # Deterministic tiebreaker across mixed node types.
         key=lambda node: (energies[node], -working_graph.degree(node), str(type(node)), repr(node)),
     )
     return chosen, circuits[chosen]
