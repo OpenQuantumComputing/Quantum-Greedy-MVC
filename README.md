@@ -52,3 +52,4 @@ Reference: https://arxiv.org/pdf/2607.27915
 
 - The main interface is Python API (`QuantumGreedySolver`).
 - CLI tools are not required for core usage.
+- For circuit construction without execution, use `build_qeg_ldf_circuit(graph, fixed_vertex, evolution_time, trotter_layers)`.

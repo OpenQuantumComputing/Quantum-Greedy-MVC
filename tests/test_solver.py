@@ -1,7 +1,12 @@
 import networkx as nx
 import pytest
 
-from quantum_greedy_mvc import QuantumGreedySolver, first_step_mis, first_step_mvc
+from quantum_greedy_mvc import (
+    QuantumGreedySolver,
+    build_qeg_ldf_circuit,
+    first_step_mis,
+    first_step_mvc,
+)
 
 
 def test_mvc_unweighted_greedy_degree_returns_vertex_cover():
@@ -129,3 +134,37 @@ def test_first_step_returns_none_for_edge_free_graph():
     selected_vertex, circuit = first_step_mvc(graph)
     assert selected_vertex is None
     assert circuit is None
+
+
+def test_build_qeg_ldf_circuit_builds_without_execution(monkeypatch):
+    graph = nx.Graph()
+    graph.add_edge("v2", "v10")
+    graph.add_node("isolated")
+
+    def fake_circuit(graph_int, fixed_vertex, evolution_time, trotter_layers):
+        assert set(graph_int.nodes()) == {0, 1}
+        assert evolution_time == 0.4
+        assert trotter_layers == 2
+        return f"circ-{fixed_vertex}"
+
+    monkeypatch.setattr("quantum_greedy_mvc.solver._conditioned_mvc_mixer_circuit", fake_circuit)
+
+    circuit = build_qeg_ldf_circuit(
+        graph=graph,
+        fixed_vertex="v2",
+        evolution_time=0.4,
+        trotter_layers=2,
+    )
+    assert circuit == "circ-1"
+
+
+def test_build_qeg_ldf_circuit_rejects_invalid_fixed_vertex():
+    graph = nx.path_graph(3)
+    with pytest.raises(ValueError, match="fixed_vertex must be a node in graph"):
+        build_qeg_ldf_circuit(graph=graph, fixed_vertex=9)
+
+    graph_with_isolated = nx.Graph()
+    graph_with_isolated.add_edge(0, 1)
+    graph_with_isolated.add_node(2)
+    with pytest.raises(ValueError, match="fixed_vertex must have degree > 0"):
+        build_qeg_ldf_circuit(graph=graph_with_isolated, fixed_vertex=2)
