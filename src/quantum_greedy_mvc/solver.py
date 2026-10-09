@@ -207,7 +207,7 @@ def _qeg_ldf_first_step_vertex_cover(
     best_circuit: QuantumCircuit | None = None
     best_key: tuple[float, int, int] | None = None
 
-    for node in candidates:
+    for node in ordered_candidates:
         circuit = _conditioned_mvc_mixer_circuit(
             graph_int=graph_int,
             fixed_vertex=node_to_int[node],
