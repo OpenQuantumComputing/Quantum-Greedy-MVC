@@ -225,6 +225,39 @@ def _qeg_ldf_first_step_vertex_cover(
     return best_node, best_circuit
 
 
+def build_qeg_ldf_circuit(
+    graph: nx.Graph,
+    fixed_vertex: Any,
+    evolution_time: float = 0.35,
+    trotter_layers: int = 1,
+):
+    """Build a single conditioned QEG-LDF circuit without executing it."""
+    validated_graph = QuantumGreedySolver._validate_graph(graph)
+    if evolution_time <= 0:
+        raise ValueError("evolution_time must be > 0")
+    if trotter_layers < 1:
+        raise ValueError("trotter_layers must be >= 1")
+    if fixed_vertex not in validated_graph:
+        raise ValueError("fixed_vertex must be a node in graph")
+
+    working_graph = validated_graph.copy()
+    placeholder_weights = {node: 1.0 for node in working_graph.nodes()}
+    _remove_isolated_nodes_inplace(working_graph, placeholder_weights)
+    if fixed_vertex not in working_graph:
+        raise ValueError("fixed_vertex must have degree > 0 after isolated-node removal")
+
+    graph_int, _, node_to_int, _ = _relabel_graph_and_weights(
+        working_graph,
+        placeholder_weights,
+    )
+    return _conditioned_mvc_mixer_circuit(
+        graph_int=graph_int,
+        fixed_vertex=node_to_int[fixed_vertex],
+        evolution_time=evolution_time,
+        trotter_layers=trotter_layers,
+    )
+
+
 def first_step_mvc(
     graph: nx.Graph,
     weights: dict[Any, float] | None = None,
