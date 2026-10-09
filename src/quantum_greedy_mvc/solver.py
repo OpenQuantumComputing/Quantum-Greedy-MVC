@@ -193,8 +193,6 @@ def _qeg_ldf_first_step_vertex_cover(
         return None, None
 
     candidates = [node for node, degree in working_graph.degree() if degree > 0]
-    if not candidates:
-        return None, None
 
     graph_int, weights_int, node_to_int, _ = _relabel_graph_and_weights(
         working_graph,
@@ -233,6 +231,6 @@ def first_step_mis(
     graph: nx.Graph,
     weights: dict[Any, float] | None = None,
 ) -> tuple[Any | None, QuantumCircuit | None]:
-    validated_graph = QuantumGreedySolver._validate_graph(graph)
-    normalized_weights = QuantumGreedySolver._normalize_weights(validated_graph, weights)
-    return _qeg_ldf_first_step_vertex_cover(validated_graph, normalized_weights)
+    # solve_mis() is implemented as complement_of_vertex_cover, so this first decision
+    # intentionally mirrors the first recursive cover decision.
+    return first_step_mvc(graph, weights)
