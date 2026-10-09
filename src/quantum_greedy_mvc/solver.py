@@ -215,6 +215,7 @@ def _qeg_ldf_first_step_vertex_cover(
             trotter_layers=trotter_layers,
         )
         energy = _expected_cost_from_circuit(circuit, weights_int, shots)
+        # Selection rule: lowest energy, then highest degree, then deterministic node order.
         key = (energy, -working_graph.degree(node), deterministic_rank[node])
         if best_key is None or key < best_key:
             best_node = node
@@ -228,6 +229,7 @@ def first_step_mvc(
     graph: nx.Graph,
     weights: dict[Any, float] | None = None,
 ) -> tuple[Any | None, QuantumCircuit | None]:
+    """Return the first QEG-LDF MVC decision as (selected_vertex, conditioned_circuit)."""
     validated_graph = QuantumGreedySolver._validate_graph(graph)
     normalized_weights = QuantumGreedySolver._normalize_weights(validated_graph, weights)
     return _qeg_ldf_first_step_vertex_cover(validated_graph, normalized_weights)
@@ -237,6 +239,7 @@ def first_step_mis(
     graph: nx.Graph,
     weights: dict[Any, float] | None = None,
 ) -> tuple[Any | None, QuantumCircuit | None]:
+    """Return the first recursive cover decision used by solve_mis() complement logic."""
     # solve_mis() is implemented as complement_of_vertex_cover, so this first decision
     # intentionally mirrors the first recursive cover decision.
     return first_step_mvc(graph, weights)
